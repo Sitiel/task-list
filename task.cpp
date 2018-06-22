@@ -2,16 +2,16 @@
 #include "ui_task.h"
 #include <QDebug>
 
-Task::Task(int id, QString text, bool local, QWidget *parent) :
+Task::Task(int id, QString text, bool local, QColor localColor, QColor onlineColor, QWidget *parent) :
     QWidget(parent),
     ui(new Ui::Task)
 {
     m_id = id;
     ui->setupUi(this);
     if(local)
-        this->setStyleSheet("background-color: #e5e500;");
+        this->setStyleSheet("background-color: " + localColor.name() + ";");
     else
-        this->setStyleSheet("background-color: yellow;");
+        this->setStyleSheet("background-color: " + onlineColor.name() + ";");
     this->ui->plainTextEdit->document()->setPlainText(text);
     m_local = local;
 }
@@ -29,6 +29,11 @@ QString Task::getText()
 bool Task::isLocal()
 {
     return m_local;
+}
+
+void Task::setText(QString text)
+{
+    this->ui->plainTextEdit->document()->setPlainText(text);
 }
 
 

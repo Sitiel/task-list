@@ -12,6 +12,8 @@
 #include <QTimer>
 #include <QMessageBox>
 #include <QDataStream>
+#include <QSettings>
+#include <QColorDialog>
 
 using namespace std;
 
@@ -20,7 +22,7 @@ MainWindow::MainWindow(QWidget *parent) :
     ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
-    this->setStyleSheet("background-color: yellow;");
+    readSettings();
     updateTaskList();
     QTimer *timer = new QTimer(this);
     connect(timer, SIGNAL(timeout()), this, SLOT(updateTaskList()));
@@ -45,6 +47,30 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    QSettings settings("Kang", "tasklist");
+    qDebug() << "Saved !";
+    settings.setValue("geometry", saveGeometry());
+    settings.setValue("windowState", saveState());
+    settings.setValue("mainColor", mainColor);
+    settings.setValue("onlineColor", onlineTaskColor);
+    settings.setValue("localeColor", localeTaskColor);
+    QMainWindow::closeEvent(event);
+}
+
+void MainWindow::readSettings()
+{
+    QSettings settings("Kang", "tasklist");
+    restoreGeometry(settings.value("geometry").toByteArray());
+    restoreState(settings.value("windowState").toByteArray());
+    mainColor = settings.value("mainColor").value<QColor>();
+    onlineTaskColor = settings.value("mainColor").value<QColor>();
+    localeTaskColor = settings.value("mainColor").value<QColor>();
+
+    this->setStyleSheet("background-color: " + mainColor.name() + ";");
+}
+
 void MainWindow::keyPressEvent( QKeyEvent *k )
 {
     if(k->key() == Qt::Key_N)
@@ -59,6 +85,51 @@ void MainWindow::keyPressEvent( QKeyEvent *k )
         if(QApplication::keyboardModifiers() && Qt::ControlModifier)
         {
             addLocalTask("-");
+            this->save();
+        }
+    }
+
+    if(k->key() == Qt::Key_W)
+    {
+        if(QApplication::keyboardModifiers() && Qt::ControlModifier)
+        {
+            QWidget * w = qApp->focusWidget();
+            QPlainTextEdit* t = dynamic_cast<QPlainTextEdit*>(w);
+            if(t == NULL){
+                return;
+            }
+
+            Task *task = static_cast<Task*>(t->parent());
+            if(task->isLocal()){
+                this->ui->scrollAreaWidgetContents->layout()->removeWidget(task);
+                t->setVisible(false);
+                t->document()->setPlainText("");
+                this->save();
+            }else{
+                this->removeTask(task->getId());
+            }
+        }
+    }
+
+    if(k->key() == Qt::Key_I)
+    {
+        if(QApplication::keyboardModifiers() && Qt::ControlModifier)
+        {
+            mainColor = QColorDialog::getColor(Qt::yellow, this);
+        }
+    }
+    if(k->key() == Qt::Key_O)
+    {
+        if(QApplication::keyboardModifiers() && Qt::ControlModifier)
+        {
+            onlineTaskColor = QColorDialog::getColor(Qt::yellow, this);
+        }
+    }
+    if(k->key() == Qt::Key_P)
+    {
+        if(QApplication::keyboardModifiers() && Qt::ControlModifier)
+        {
+            localeTaskColor = QColorDialog::getColor(Qt::yellow, this);
         }
     }
 }
@@ -84,17 +155,18 @@ void MainWindow::updateTaskList()
     for(int i = 0 ; i < tasks.size() ; i++){
         QJsonObject obj = tasks.at(i).toObject();
         int id = obj.value("id").toInt();
+        QString text = obj.value("task_txt").toString();
         bool found = false;
         for(int j = 0 ; j < this->ui->scrollAreaWidgetContents->layout()->count() ; j++){
             Task* taskWidget = static_cast<Task*>(this->ui->scrollAreaWidgetContents->layout()->itemAt(j)->widget());
             if(taskWidget->getId() == id){
                 found = true;
-                break;
+                taskWidget->setText(text);
             }
         }
         if(!found)
         {
-            Task* t = new Task(id, obj.value("task_txt").toString(), false);
+            Task* t = new Task(id, obj.value("task_txt").toString(), false, localeTaskColor, onlineTaskColor);
             this->ui->scrollAreaWidgetContents->layout()->addWidget(t);
             connect(t, SIGNAL(focusChanged(Task*)), this, SLOT(focusChange(Task*)));
         }
@@ -163,7 +235,7 @@ void MainWindow::addOnlineTask(QString text)
 
 void MainWindow::addLocalTask(QString text)
 {
-    Task* t = new Task(-1, text, true);
+    Task* t = new Task(-1, text, true, localeTaskColor, onlineTaskColor);
     this->ui->scrollAreaWidgetContents->layout()->addWidget(t);
     connect(t, SIGNAL(focusChanged(Task*)), this, SLOT(focusChange(Task*)));
 }
@@ -191,28 +263,32 @@ void MainWindow::modifyTask(Task* t)
         currentReply->deleteLater();
     }
     else{
-
-        QFile file("save.task");
-        if (!file.open(QIODevice::WriteOnly)) {
-            QMessageBox::information(this, tr("Impossible de sauvegarder les tâches locales"),
-                                     file.errorString());
-            return;
-        }
-        QTextStream out(&file);
-        for(int j = 0 ; j < this->ui->scrollAreaWidgetContents->layout()->count() ; j++){
-            Task* taskWidget = static_cast<Task*>(this->ui->scrollAreaWidgetContents->layout()->itemAt(j)->widget());
-            if(taskWidget->isLocal()){
-                if(taskWidget->getText() == ""){
-                    this->ui->scrollAreaWidgetContents->layout()->removeWidget(taskWidget);
-                    taskWidget->setVisible(false);
-                    continue;
-                }
-                out << taskWidget->getText() << "\r\n";
-            }
-        }
+        this->save();
     }
 }
 
+
+void MainWindow::save(){
+
+    QFile file("save.task");
+    if (!file.open(QIODevice::WriteOnly)) {
+        QMessageBox::information(this, tr("Impossible de sauvegarder les tâches locales"),
+                                 file.errorString());
+        return;
+    }
+    QTextStream out(&file);
+    for(int j = 0 ; j < this->ui->scrollAreaWidgetContents->layout()->count() ; j++){
+        Task* taskWidget = static_cast<Task*>(this->ui->scrollAreaWidgetContents->layout()->itemAt(j)->widget());
+        if(taskWidget->isLocal()){
+            if(taskWidget->getText() == ""){
+                this->ui->scrollAreaWidgetContents->layout()->removeWidget(taskWidget);
+                taskWidget->setVisible(false);
+                continue;
+            }
+            out << taskWidget->getText() << "\r\n";
+        }
+    }
+}
 
 
 void MainWindow::removeTask(int id)
