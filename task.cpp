@@ -2,7 +2,7 @@
 #include "ui_task.h"
 #include <QDebug>
 
-Task::Task(int id, QString text, bool local, QColor localColor, QColor onlineColor, QWidget *parent) :
+Task::Task(int id, QString text, bool local, QFont font, QColor localColor, QColor onlineColor, QWidget *parent) :
     QWidget(parent),
     ui(new Ui::Task)
 {
@@ -12,6 +12,9 @@ Task::Task(int id, QString text, bool local, QColor localColor, QColor onlineCol
         this->setStyleSheet("background-color: " + localColor.name() + ";");
     else
         this->setStyleSheet("background-color: " + onlineColor.name() + ";");
+
+    this->ui->plainTextEdit->document()->setDefaultFont(font);
+
     this->ui->plainTextEdit->document()->setPlainText(text);
     m_local = local;
 }

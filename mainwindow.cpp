@@ -13,6 +13,7 @@
 #include <QMessageBox>
 #include <QDataStream>
 #include <QSettings>
+#include <QFontDialog>
 #include <QColorDialog>
 
 using namespace std;
@@ -22,24 +23,19 @@ MainWindow::MainWindow(QWidget *parent) :
     ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+    QWidget::setWindowIcon(QIcon("kang.png"));
     readSettings();
     updateTaskList();
     QTimer *timer = new QTimer(this);
     connect(timer, SIGNAL(timeout()), this, SLOT(updateTaskList()));
     timer->start(10000);
 
-    QFile inputFile("save.task");
-    if (inputFile.open(QIODevice::ReadOnly))
-    {
-        QTextStream in(&inputFile);
-        while (!in.atEnd())
-        {
-            QString line = in.readLine();
-            addLocalTask(line);
-        }
-        inputFile.close();
+    QFile jsonFile("save.task");
+    jsonFile.open(QFile::ReadOnly);
+    QJsonArray array = QJsonDocument().fromJson(jsonFile.readAll()).array();
+    for(int i = 0 ; i < array.size() ; i++){
+        addLocalTask(array[i].toString());
     }
-
 }
 
 MainWindow::~MainWindow()
@@ -49,14 +45,18 @@ MainWindow::~MainWindow()
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+    saveSettings();
+    QMainWindow::closeEvent(event);
+}
+
+void MainWindow::saveSettings(){
     QSettings settings("Kang", "tasklist");
-    qDebug() << "Saved !";
     settings.setValue("geometry", saveGeometry());
     settings.setValue("windowState", saveState());
     settings.setValue("mainColor", mainColor);
     settings.setValue("onlineColor", onlineTaskColor);
     settings.setValue("localeColor", localeTaskColor);
-    QMainWindow::closeEvent(event);
+    settings.setValue("font", font);
 }
 
 void MainWindow::readSettings()
@@ -65,8 +65,19 @@ void MainWindow::readSettings()
     restoreGeometry(settings.value("geometry").toByteArray());
     restoreState(settings.value("windowState").toByteArray());
     mainColor = settings.value("mainColor").value<QColor>();
-    onlineTaskColor = settings.value("mainColor").value<QColor>();
-    localeTaskColor = settings.value("mainColor").value<QColor>();
+    onlineTaskColor = settings.value("onlineColor").value<QColor>();
+    localeTaskColor = settings.value("localeColor").value<QColor>();
+    font = settings.value("font").value<QFont>();
+
+    if(!mainColor.isValid()){
+        mainColor = QColor(Qt::GlobalColor::yellow);
+    }
+    if(!onlineTaskColor.isValid()){
+        onlineTaskColor = QColor(200, 200, 0);
+    }
+    if(!localeTaskColor.isValid()){
+        localeTaskColor = QColor(120, 120, 0);
+    }
 
     this->setStyleSheet("background-color: " + mainColor.name() + ";");
 }
@@ -116,6 +127,8 @@ void MainWindow::keyPressEvent( QKeyEvent *k )
         if(QApplication::keyboardModifiers() && Qt::ControlModifier)
         {
             mainColor = QColorDialog::getColor(Qt::yellow, this);
+            this->setStyleSheet("background-color: " + mainColor.name() + ";");
+            saveSettings();
         }
     }
     if(k->key() == Qt::Key_O)
@@ -123,6 +136,7 @@ void MainWindow::keyPressEvent( QKeyEvent *k )
         if(QApplication::keyboardModifiers() && Qt::ControlModifier)
         {
             onlineTaskColor = QColorDialog::getColor(Qt::yellow, this);
+            saveSettings();
         }
     }
     if(k->key() == Qt::Key_P)
@@ -130,6 +144,19 @@ void MainWindow::keyPressEvent( QKeyEvent *k )
         if(QApplication::keyboardModifiers() && Qt::ControlModifier)
         {
             localeTaskColor = QColorDialog::getColor(Qt::yellow, this);
+            saveSettings();
+        }
+    }
+    if(k->key() == Qt::Key_G)
+    {
+        if(QApplication::keyboardModifiers() && Qt::ControlModifier)
+        {
+            bool ok;
+            QFont tmpFont = QFontDialog::getFont(
+                           &ok, QFont("Helvetica [Cronyx]", 10), this);
+            if(ok){
+                font = tmpFont;
+            }
         }
     }
 }
@@ -166,7 +193,7 @@ void MainWindow::updateTaskList()
         }
         if(!found)
         {
-            Task* t = new Task(id, obj.value("task_txt").toString(), false, localeTaskColor, onlineTaskColor);
+            Task* t = new Task(id, obj.value("task_txt").toString(), false, font, localeTaskColor, onlineTaskColor);
             this->ui->scrollAreaWidgetContents->layout()->addWidget(t);
             connect(t, SIGNAL(focusChanged(Task*)), this, SLOT(focusChange(Task*)));
         }
@@ -199,13 +226,7 @@ void MainWindow::updateTaskList()
 
 void MainWindow::focusChange(Task *taskWidget)
 {
-
-    if(taskWidget->getText() == ""){
-        this->removeTask(taskWidget->getId());
-    }
-    else{
-        this->modifyTask(taskWidget);
-    }
+    this->modifyTask(taskWidget);
 }
 
 void MainWindow::addOnlineTask(QString text)
@@ -235,7 +256,7 @@ void MainWindow::addOnlineTask(QString text)
 
 void MainWindow::addLocalTask(QString text)
 {
-    Task* t = new Task(-1, text, true, localeTaskColor, onlineTaskColor);
+    Task* t = new Task(-1, text, true, font, localeTaskColor, onlineTaskColor);
     this->ui->scrollAreaWidgetContents->layout()->addWidget(t);
     connect(t, SIGNAL(focusChanged(Task*)), this, SLOT(focusChange(Task*)));
 }
@@ -271,23 +292,24 @@ void MainWindow::modifyTask(Task* t)
 void MainWindow::save(){
 
     QFile file("save.task");
-    if (!file.open(QIODevice::WriteOnly)) {
+    if (!file.open(QFile::WriteOnly)) {
         QMessageBox::information(this, tr("Impossible de sauvegarder les tâches locales"),
                                  file.errorString());
         return;
     }
-    QTextStream out(&file);
+
+    QJsonArray jsonArray;
+
     for(int j = 0 ; j < this->ui->scrollAreaWidgetContents->layout()->count() ; j++){
         Task* taskWidget = static_cast<Task*>(this->ui->scrollAreaWidgetContents->layout()->itemAt(j)->widget());
         if(taskWidget->isLocal()){
-            if(taskWidget->getText() == ""){
-                this->ui->scrollAreaWidgetContents->layout()->removeWidget(taskWidget);
-                taskWidget->setVisible(false);
-                continue;
-            }
-            out << taskWidget->getText() << "\r\n";
+            jsonArray.push_back(taskWidget->getText());
         }
     }
+
+    QJsonDocument jsonDoc(jsonArray);
+
+    file.write(jsonDoc.toJson());
 }
 
 
@@ -318,6 +340,10 @@ void MainWindow::removeTask(int id)
 
 void MainWindow::mousePressEvent(QMouseEvent *event){
     mpos = event->pos();
+    if(mpos.x() > this->width()-25 && mpos.y() > this->height() - 25)
+        resizing = true;
+    else
+        resizing = false;
 }
 
 void MainWindow::mouseMoveEvent(QMouseEvent *event){
@@ -325,6 +351,13 @@ void MainWindow::mouseMoveEvent(QMouseEvent *event){
         QPoint diff = event->pos() - mpos;
         QPoint newpos = this->pos() + diff;
 
-        this->move(newpos);
+        if(resizing){
+            this->resize(this->width() + diff.x(), this->height() + diff.y());
+            mpos = event->pos();
+        }
+        else{
+             this->move(newpos);
+        }
+
     }
 }

@@ -12,7 +12,7 @@ class Task : public QWidget
     Q_OBJECT
 
 public:
-    explicit Task(int id, QString text, bool local, QColor localColor, QColor onlineColor, QWidget *parent = 0);
+    explicit Task(int id, QString text, bool local, QFont font, QColor localColor, QColor onlineColor, QWidget *parent = 0);
     int getId();
     QString getText();
     bool isLocal();

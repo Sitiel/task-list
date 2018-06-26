@@ -4,6 +4,7 @@
 #include <QMainWindow>
 #include <QMouseEvent>
 #include <QColor>
+#include <QFont>
 #include "task.h"
 
 namespace Ui {
@@ -21,6 +22,7 @@ public:
     void keyPressEvent(QKeyEvent *event);
     void closeEvent(QCloseEvent *event);
     void readSettings();
+    void saveSettings();
 
     void removeTask(int id);
     void addLocalTask(QString text);
@@ -35,8 +37,10 @@ public slots:
 
 private:
     Ui::MainWindow *ui;
+    bool resizing;
     QPoint mpos;
     QColor mainColor, onlineTaskColor, localeTaskColor;
+    QFont font;
 };
 
 #endif // MAINWINDOW_H
